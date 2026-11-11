@@ -1,71 +1,64 @@
 <?php
 /**
- * Manca Productora - Hostinger Content API
- * Permite guardar y leer el contenido del sitio web permanentemente en Hostinger.
+ * Manca - API de contenido.
+ * GET : lectura publica del contenido del sitio (el frontend lo consume).
+ * POST: guardado permanente, requiere sesion de administrador.
  */
-header("Access-Control-Allow-Origin: *");
-header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
-header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With");
-header("Content-Type: application/json; charset=UTF-8");
+require __DIR__ . '/common.php';
 
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    http_response_code(200);
-    exit();
-}
+manca_cors();
 
 $dataDir = __DIR__ . '/data';
 $dataFile = $dataDir . '/siteContent.json';
-
-if (!file_exists($dataDir)) {
+if (!is_dir($dataDir)) {
     @mkdir($dataDir, 0755, true);
 }
 
-if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-    if (file_exists($dataFile)) {
-        echo file_get_contents($dataFile);
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET') {
+    if (is_file($dataFile)) {
+        header('Content-Type: application/json; charset=UTF-8');
+        echo (string) file_get_contents($dataFile);
     } else {
-        // Si aún no se ha guardado, retornar estructura básica
-        echo json_encode([
-            "status" => "ready",
-            "message" => "Hostinger API activa y lista para guardar contenidos",
-            "serverTime" => date("Y-m-d H:i:s")
+        manca_json([
+            'status' => 'ready',
+            'message' => 'Hostinger API activa y lista para guardar contenidos',
+            'serverTime' => date('Y-m-d H:i:s'),
         ]);
     }
-    exit();
+    exit;
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $rawInput = file_get_contents('php://input');
-    if (empty($rawInput)) {
-        http_response_code(400);
-        echo json_encode(["error" => "Cuerpo de solicitud vacío"]);
-        exit();
+    manca_require_admin();
+
+    $rawInput = (string) file_get_contents('php://input');
+    if ($rawInput === '') {
+        manca_json(['error' => 'Cuerpo de solicitud vacío.'], 400);
     }
 
     $decoded = json_decode($rawInput, true);
-    if ($decoded === null) {
-        http_response_code(400);
-        echo json_encode(["error" => "Formato JSON no válido"]);
-        exit();
+    if (!is_array($decoded)) {
+        manca_json(['error' => 'Formato JSON no válido.'], 400);
     }
 
     $saved = file_put_contents(
         $dataFile,
-        json_encode($decoded, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
+        json_encode($decoded, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+        LOCK_EX
     );
 
     if ($saved !== false) {
-        echo json_encode([
-            "success" => true,
-            "message" => "Contenido guardado permanentemente en Hostinger",
-            "timestamp" => date("H:i:s"),
-            "bytes" => $saved
-        ]);
-    } else {
-        http_response_code(500);
-        echo json_encode([
-            "error" => "No se pudo escribir en 'api/data/siteContent.json'. Verifica los permisos de escritura (755) en Hostinger."
+        manca_json([
+            'success' => true,
+            'message' => 'Contenido guardado permanentemente en Hostinger.',
+            'timestamp' => date('H:i:s'),
+            'bytes' => $saved,
         ]);
     }
-    exit();
+
+    manca_json([
+        'error' => "No se pudo escribir en 'api/data/siteContent.json'. Verificá los permisos (755) en Hostinger.",
+    ], 500);
 }
+
+manca_json(['error' => 'Método no permitido.'], 405);

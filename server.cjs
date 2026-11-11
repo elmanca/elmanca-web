@@ -26,6 +26,31 @@ var import_express = __toESM(require("express"), 1);
 var import_path = __toESM(require("path"), 1);
 var import_fs = __toESM(require("fs"), 1);
 var import_vite = require("vite");
+var import_crypto = require("crypto");
+// Sesiones locales (dev). En producción la autenticación la hace PHP (api/login.php).
+const localSessions = /* @__PURE__ */ new Map();
+function loadAdminConfig() {
+  try {
+    const cfgPath = import_path.default.join(process.cwd(), "api", "config.json");
+    if (import_fs.default.existsSync(cfgPath)) {
+      return JSON.parse(import_fs.default.readFileSync(cfgPath, "utf-8"));
+    }
+  } catch (err) {
+    console.warn("Could not read api/config.json:", err);
+  }
+  return null;
+}
+function isAuthed(req) {
+  try {
+    const raw = req.headers.cookie || "";
+    const match = raw.match(/manca_admin=([^;]+)/);
+    if (!match) return false;
+    const s = localSessions.get(match[1]);
+    return !!(s && s.exp > Date.now());
+  } catch {
+    return false;
+  }
+}
 async function startServer() {
   const app = (0, import_express.default)();
   const PORT = 3e3;
@@ -51,6 +76,29 @@ async function startServer() {
     }
     next();
   });
+  app.post(["/api/login.php", "/api/login"], (req, res) => {
+    const cfg = loadAdminConfig();
+    const { username = "", password = "" } = req.body || {};
+    if (!cfg || !cfg.password_salt || !cfg.password_hash) {
+      return res.status(500).json({ success: false, error: "Servidor mal configurado: falta api/config.json" });
+    }
+    if (!/^[0-9a-f]{64}$/i.test(cfg.password_hash)) {
+      return res.status(500).json({ success: false, error: "Configuración de contraseña inválida en api/config.json" });
+    }
+    const expected = import_crypto.createHash("sha256").update(cfg.password_salt + password).digest("hex");
+    const userOk = username === (cfg.admin_user || "admin");
+    const passOk = import_crypto.timingSafeEqual(
+      Buffer.from(expected, "hex"),
+      Buffer.from(cfg.password_hash, "hex")
+    );
+    if (userOk && passOk) {
+      const token = import_crypto.randomBytes(24).toString("hex");
+      localSessions.set(token, { exp: Date.now() + 8 * 60 * 60 * 1e3 });
+      res.setHeader("Set-Cookie", `manca_admin=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${8 * 3600}`);
+      return res.json({ success: true, message: "Acceso autorizado" });
+    }
+    return res.status(401).json({ success: false, error: "Usuario o contraseña incorrectos. Verifique sus credenciales." });
+  });
   app.get(["/api/health", "/api/health.php"], (req, res) => {
     res.json({ status: "ok", time: (/* @__PURE__ */ new Date()).toISOString() });
   });
@@ -71,6 +119,9 @@ async function startServer() {
     }
   });
   app.post(["/api/content", "/api/content.php"], (req, res) => {
+    if (!isAuthed(req)) {
+      return res.status(401).json({ error: "No autorizado. Iniciá sesión desde el panel de administración." });
+    }
     try {
       const payload = req.body;
       if (!payload || typeof payload !== "object") {
@@ -120,6 +171,9 @@ async function startServer() {
     console.warn("Could not create public/uploads:", err);
   }
   app.post(["/api/upload", "/api/upload.php"], (req, res) => {
+    if (!isAuthed(req)) {
+      return res.status(401).json({ error: "No autorizado. Iniciá sesión desde el panel de administración." });
+    }
     try {
       const { image, name } = req.body;
       if (!image || typeof image !== "string") {
@@ -177,4 +231,3 @@ async function startServer() {
   });
 }
 startServer();
-//# sourceMappingURL=server.cjs.map

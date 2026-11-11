@@ -18,6 +18,17 @@
   RewriteRule ^ index.html [L]
 </IfModule>
 
+# Proteger config.json, state.json y registros (solo se accede vía api.php)
+<FilesMatch "\.(json|log)$">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+  </IfModule>
+</FilesMatch>
+
 # Encabezados CORS para OBS Studio (CEF) y aplicaciones remotas
 <IfModule mod_headers.c>
   Header set Access-Control-Allow-Origin "*"

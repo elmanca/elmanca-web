@@ -1,1 +1,9 @@
 node_modules/
+dist/
+*.log
+
+# Secretos - NUNCA subir a git
+.env
+.env.*
+api/config.json
+overlays/attempts.json

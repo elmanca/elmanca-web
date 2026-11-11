@@ -1,0 +1,7 @@
+{
+  "admin_user": "admin",
+  "password_salt": "CAMBIAR_por_valor_hex_aleatorio_32",
+  "password_hash": "CAMBIAR_por_sha256_hex_64_del_salt_mas_password",
+  "allowed_origins": ["https://elmanca.com.ar", "https://www.elmanca.com.ar"],
+  "login_rate_limit": 5
+}

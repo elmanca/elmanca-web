@@ -18,14 +18,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 $dataFile = __DIR__ . '/state.json';
 $configFile = __DIR__ . '/config.json';
 
-// Initialize default config if missing
+// Initialize default config if missing (PIN aleatorio si no existe)
 $defaultConfig = [
-    'pin' => '1234'
+    'pin' => (string) random_int(1000, 9999)
 ];
 if (!file_exists($configFile)) {
     @file_put_contents($configFile, json_encode($defaultConfig, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 }
 $config = json_decode(@file_get_contents($configFile) ?: '{}', true) ?: $defaultConfig;
+
+// Archivo de intentos de login (anti fuerza bruta)
+$attemptsFile = __DIR__ . '/attempts.json';
+
+// --- Anti fuerza bruta (por IP, ventana de 15 min) ---
+function get_client_ip(): string {
+    return $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+}
+function read_attempts(string $file): array {
+    return json_decode(@file_get_contents($file) ?: '{}', true) ?: [];
+}
+function write_attempts(string $file, array $data): void {
+    @file_put_contents($file, json_encode($data, JSON_UNESCAPED_SLASHES), LOCK_EX);
+}
 
 // Initialize state store if missing
 if (!file_exists($dataFile)) {
@@ -68,19 +82,39 @@ if ($path === '/api/auth/status') {
     exit;
 }
 
-// Auth Verify
+// Auth Verify (con rate limiting por IP)
 if ($path === '/api/auth/verify' && $method === 'POST') {
+    $ip = get_client_ip();
+    $attempts = read_attempts($attemptsFile);
+    $now = time();
+    $entry = $attempts[$ip] ?? ['count' => 0, 'window' => $now];
+    if ($now - (int) ($entry['window'] ?? $now) > 900) {
+        $entry = ['count' => 0, 'window' => $now];
+    }
+    if ((int) ($entry['count'] ?? 0) >= 5) {
+        http_response_code(429);
+        echo json_encode([
+            'success' => false,
+            'error' => 'Demasiados intentos. Esperá 15 minutos e intentá de nuevo.'
+        ]);
+        exit;
+    }
+
     $pin = trim($input['pin'] ?? $_POST['pin'] ?? '');
-    $currentPin = trim($config['pin'] ?? '1234');
+    $currentPin = trim($config['pin'] ?? '0000');
 
     if ($pin === $currentPin) {
-        $token = 'manca_' . bin2hex(random_bytes(8)) . '_' . time();
+        $attempts[$ip] = ['count' => 0, 'window' => $now];
+        write_attempts($attemptsFile, $attempts);
+        $token = 'manca_' . bin2hex(random_bytes(16)) . '_' . time();
         echo json_encode([
             'success' => true,
             'token' => $token,
             'message' => 'Acceso autorizado'
         ]);
     } else {
+        $attempts[$ip] = ['count' => (int) ($entry['count'] ?? 0) + 1, 'window' => (int) ($entry['window'] ?? $now)];
+        write_attempts($attemptsFile, $attempts);
         http_response_code(401);
         echo json_encode([
             'success' => false,

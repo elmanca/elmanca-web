@@ -1,106 +1,81 @@
 <?php
 /**
- * Manca Productora - Hostinger Image Uploader
- * Recibe imágenes desde el panel de administración y las guarda en /uploads/ dentro de Hostinger.
- * Devuelve la URL pública y definitiva de la imagen (ej: https://elmanca.com.ar/uploads/imagen.jpg).
+ * Manca - Subida de imagenes.
+ * Acepta Base64 (JSON) o multipart. Requiere sesion de administrador.
  */
-header("Access-Control-Allow-Origin: *");
-header("Access-Control-Allow-Methods: POST, OPTIONS");
-header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With");
-header("Content-Type: application/json; charset=UTF-8");
+require __DIR__ . '/common.php';
 
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    http_response_code(200);
-    exit();
+manca_cors();
+
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+    manca_json(['error' => 'Método no permitido.'], 405);
 }
 
-// Carpeta de almacenamiento en Hostinger: public_html/uploads/
+manca_require_admin();
+
 $uploadDir = dirname(__DIR__) . '/uploads/';
-if (!file_exists($uploadDir)) {
+if (!is_dir($uploadDir)) {
     @mkdir($uploadDir, 0755, true);
 }
 
-// Detección de protocolo y dominio de Hostinger
-$isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (isset($_SERVER['SERVER_PORT']) && $_SERVER['SERVER_PORT'] == 443);
-$protocol = $isHttps ? "https://" : "http://";
-$host = $_SERVER['HTTP_HOST'];
+$isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+    || (isset($_SERVER['SERVER_PORT']) && (int) $_SERVER['SERVER_PORT'] === 443);
+$protocol = $isHttps ? 'https://' : 'http://';
+$host = $_SERVER['HTTP_HOST'] ?? 'localhost';
 $baseUrl = $protocol . $host . '/uploads/';
 
-// 1. Método Base64 (JSON)
-$rawInput = file_get_contents('php://input');
-if (!empty($rawInput)) {
-    $data = json_decode($rawInput, true);
-    if ($data && isset($data['image']) && is_string($data['image'])) {
-        $base64String = $data['image'];
-        if (preg_match('/^data:image\/([a-zA-Z0-9+]+);base64,(.+)$/', $base64String, $matches)) {
-            $type = strtolower($matches[1]);
-            $base64Data = $matches[2];
+$allowed = ['jpg', 'jpeg', 'png', 'webp', 'svg', 'gif'];
 
+function manca_sanitize_name(string $name): string {
+    $clean = preg_replace('/[^a-zA-Z0-9-_]/', '_', $name) ?? 'manca';
+    return substr($clean, 0, 35);
+}
+
+function manca_store_upload(string $data, string $ext, string $prefix, string $uploadDir): string {
+    $fileName = manca_sanitize_name($prefix) . '_' . time() . '_' . rand(100, 999) . '.' . $ext;
+    if (file_put_contents($uploadDir . $fileName, $data, LOCK_EX) === false) {
+        return '';
+    }
+    return $fileName;
+}
+
+// 1) Base64 / JSON
+$rawInput = (string) file_get_contents('php://input');
+if ($rawInput !== '') {
+    $data = json_decode($rawInput, true);
+    if (is_array($data) && isset($data['image']) && is_string($data['image'])) {
+        if (preg_match('/^data:image\/([a-zA-Z0-9+]+);base64,(.+)$/', $data['image'], $matches)) {
+            $type = strtolower($matches[1]);
             if ($type === 'jpeg') $type = 'jpg';
             if ($type === 'svg+xml') $type = 'svg';
-
-            $allowed = ['jpg', 'jpeg', 'png', 'webp', 'svg', 'gif'];
-            if (!in_array($type, $allowed)) {
-                http_response_code(400);
-                echo json_encode(["error" => "Tipo de archivo no permitido: " . $type]);
-                exit();
+            if (!in_array($type, $allowed, true)) {
+                manca_json(['error' => 'Tipo de archivo no permitido: ' . $type], 400);
             }
-
-            $decoded = base64_decode($base64Data);
+            $decoded = base64_decode($matches[2], true);
             if ($decoded === false) {
-                http_response_code(400);
-                echo json_encode(["error" => "Datos base64 inválidos"]);
-                exit();
+                manca_json(['error' => 'Datos base64 inválidos.'], 400);
             }
-
-            $namePrefix = !empty($data['name']) ? preg_replace('/[^a-zA-Z0-9-_]/', '_', $data['name']) : 'manca';
-            $fileName = substr($namePrefix, 0, 35) . '_' . time() . '_' . rand(100, 999) . '.' . $type;
-            $targetPath = $uploadDir . $fileName;
-
-            if (file_put_contents($targetPath, $decoded) !== false) {
-                echo json_encode([
-                    "success" => true,
-                    "url" => $baseUrl . $fileName,
-                    "filename" => $fileName,
-                    "message" => "Imagen guardada con éxito en Hostinger"
-                ]);
-                exit();
-            } else {
-                http_response_code(500);
-                echo json_encode(["error" => "No se pudo escribir el archivo en /uploads/. Revisa permisos 755."]);
-                exit();
+            $fileName = manca_store_upload($decoded, $type, (string) ($data['name'] ?? 'manca'), $uploadDir);
+            if ($fileName !== '') {
+                manca_json(['success' => true, 'url' => $baseUrl . $fileName, 'filename' => $fileName, 'message' => 'Imagen guardada con éxito en Hostinger.']);
             }
+            manca_json(['error' => 'No se pudo escribir el archivo en /uploads/. Revisá permisos 755.'], 500);
         }
     }
 }
 
-// 2. Método FormData / Multipart
+// 2) Multipart / FormData
 if (isset($_FILES['image']) && $_FILES['image']['error'] === UPLOAD_ERR_OK) {
-    $fileTmpPath = $_FILES['image']['tmp_name'];
-    $originalName = $_FILES['image']['name'];
-    $extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
-
-    $allowed = ['jpg', 'jpeg', 'png', 'webp', 'svg', 'gif'];
-    if (!in_array($extension, $allowed)) {
-        http_response_code(400);
-        echo json_encode(["error" => "Extensión no permitida: " . $extension]);
-        exit();
+    $extension = strtolower((string) pathinfo((string) $_FILES['image']['name'], PATHINFO_EXTENSION));
+    if (!in_array($extension, $allowed, true)) {
+        manca_json(['error' => 'Extensión no permitida: ' . $extension], 400);
     }
-
-    $cleanName = preg_replace('/[^a-zA-Z0-9-_]/', '_', pathinfo($originalName, PATHINFO_FILENAME));
-    $fileName = substr($cleanName, 0, 35) . '_' . time() . '_' . rand(100, 999) . '.' . $extension;
-    $targetPath = $uploadDir . $fileName;
-
-    if (move_uploaded_file($fileTmpPath, $targetPath)) {
-        echo json_encode([
-            "success" => true,
-            "url" => $baseUrl . $fileName,
-            "filename" => $fileName,
-            "message" => "Imagen subida exitosamente a Hostinger"
-        ]);
-        exit();
+    $cleanName = manca_sanitize_name((string) pathinfo((string) $_FILES['image']['name'], PATHINFO_FILENAME));
+    $fileName = $cleanName . '_' . time() . '_' . rand(100, 999) . '.' . $extension;
+    if (move_uploaded_file($_FILES['image']['tmp_name'], $uploadDir . $fileName)) {
+        manca_json(['success' => true, 'url' => $baseUrl . $fileName, 'filename' => $fileName, 'message' => 'Imagen subida exitosamente a Hostinger.']);
     }
+    manca_json(['error' => 'No se pudo mover el archivo a /uploads/. Revisá permisos 755.'], 500);
 }
 
-http_response_code(400);
-echo json_encode(["error" => "No se recibió ninguna imagen válida"]);
+manca_json(['error' => 'No se recibió ninguna imagen válida.'], 400);

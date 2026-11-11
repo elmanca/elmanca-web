@@ -1,5 +1,24 @@
+Options -Indexes
+
+# Secretos y datos internos no accesibles por web
+<FilesMatch "^(config\.json|config\.example\.json|.*\.log)$">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+  </IfModule>
+</FilesMatch>
+
+# El directorio data/ no debe servirse directo (solo via PHP)
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteRule ^data/ - [F,L]
+</IfModule>
+
 <IfModule mod_headers.c>
-    Header always set Access-Control-Allow-Origin "*"
     Header always set Access-Control-Allow-Methods "GET, POST, OPTIONS"
-    Header always set Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With"
+    Header always set Access-Control-Allow-Headers "Content-Type, X-Requested-With"
+    Header always set X-Content-Type-Options "nosniff"
 </IfModule>
