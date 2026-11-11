@@ -1,0 +1,90 @@
+/* ============================================
+   MANCA CUSTOM — Estilos para carruseles y lightbox
+   ============================================ */
+
+/* Mejoras de carrusel */
+.manca-draggable {
+  scrollbar-width: thin;
+  scrollbar-color: #3870E0 #0E1A38;
+}
+.manca-draggable::-webkit-scrollbar {
+  height: 6px;
+}
+.manca-draggable::-webkit-scrollbar-track {
+  background: #0E1A38;
+}
+.manca-draggable::-webkit-scrollbar-thumb {
+  background: #3870E0;
+  border-radius: 3px;
+}
+
+/* Lightbox */
+#manca-lightbox {
+  animation: fadeIn 0.25s ease;
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+#manca-lightbox-close {
+  background: rgba(56,112,224,0.9) !important;
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(255,255,255,0.3);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+#manca-lightbox-close:hover {
+  background: #3870E0 !important;
+  transform: rotate(90deg);
+}
+
+/* Imágenes de carrusel más atractivas */
+img[src*="placeholder-galeria"],
+img[src*="placeholder-marca"],
+img[src*="placeholder-web"] {
+  opacity: 0.7;
+  transition: opacity 0.3s ease;
+}
+img[src*="placeholder-galeria"]:hover,
+img[src*="placeholder-marca"]:hover,
+img[src*="placeholder-web"]:hover {
+  opacity: 1;
+}
+
+/* Contadores de canal */
+.canal-stats {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.875rem;
+  color: #93C5FD;
+  margin-top: 0.5rem;
+}
+.canal-stats span {
+  color: #CBD5E1;
+  font-weight: 600;
+}
+
+/* Botones de navegación de carrusel (si se inyectan) */
+.manca-carousel-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(6,10,20,0.8);
+  border: 1px solid #2A52BE;
+  color: #fff;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  cursor: pointer;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  line-height: 1;
+}
+.manca-carousel-btn:hover {
+  background: #3870E0;
+  border-color: #3870E0;
+}
+.manca-carousel-btn.prev { left: 0.5rem; }
+.manca-carousel-btn.next { right: 0.5rem; }
