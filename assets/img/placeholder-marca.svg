@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="240" viewBox="0 0 480 240">
+  <rect width="480" height="240" rx="20" fill="#060B18"/>
+  <rect x="8" y="8" width="464" height="224" rx="14" fill="none" stroke="#FFFFFF" stroke-width="3" stroke-dasharray="16 12" opacity="0.5"/>
+  <text x="240" y="110" text-anchor="middle" font-family="Arial,sans-serif" font-size="38" font-weight="900" fill="#FFFFFF">MARCA</text>
+  <text x="240" y="150" text-anchor="middle" font-family="Arial,sans-serif" font-size="20" fill="#93C5FD">Logo del cliente / sponsor</text>
+  <text x="240" y="182" text-anchor="middle" font-family="Arial,sans-serif" font-size="16" fill="#64748B">480 x 240 • marca-1 … marca-8</text>
+</svg>

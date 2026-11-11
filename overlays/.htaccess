@@ -1,0 +1,29 @@
+# Manca Studio - Configuración Apache / LiteSpeed para Hostinger Web Hosting
+# Permite SPA Routing (React/Vite) y API PHP para OBS Studio sin Node.js
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+
+  # 1. Enrutar todas las llamadas de la API a api.php
+  RewriteRule ^api/(.*)$ api.php [QSA,L]
+  RewriteRule ^api$ api.php [QSA,L]
+
+  # 2. Servir archivos físicos existentes directamente (CSS, JS, imágenes, SVG, PNG)
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+
+  # 3. Enrutar todo lo demás a index.html (SPA y fuentes de OBS Browser Source)
+  RewriteRule ^ index.html [L]
+</IfModule>
+
+# Encabezados CORS para OBS Studio (CEF) y aplicaciones remotas
+<IfModule mod_headers.c>
+  Header set Access-Control-Allow-Origin "*"
+  Header set Access-Control-Allow-Methods "GET, POST, OPTIONS, PUT, DELETE"
+  Header set Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With"
+</IfModule>
+
+# Deshabilitar listado de directorios
+Options -Indexes

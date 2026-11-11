@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="128" fill="#0A142E"/>
+  <rect x="14" y="14" width="484" height="484" rx="116" fill="none" stroke="#2A52BE" stroke-width="10" stroke-dasharray="24 16"/>
+  <text x="256" y="225" text-anchor="middle" font-family="Arial,sans-serif" font-size="72" font-weight="900" fill="#FFFFFF">M</text>
+  <text x="256" y="290" text-anchor="middle" font-family="Arial,sans-serif" font-size="28" font-weight="bold" letter-spacing="3" fill="#93C5FD">ICONO WEB</text>
+  <text x="256" y="330" text-anchor="middle" font-family="Arial,sans-serif" font-size="18" fill="#64748B">512 x 512</text>
+</svg>
