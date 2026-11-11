@@ -1,10 +1,10 @@
 // ============================================
 // MANCA CUSTOM — Inyección post-carga del bundle
+// YouTube RSS (gratis, sin API key) + carruseles + lightbox
 // ============================================
 (function(){
   'use strict';
   const CFG = {
-    youtubeApiKey: '',
     youtubeChannel: '@elmancasg',
     youtubePlaylist: 'UU3woFJgJr1F8-55tU9Bxz3Q',
     subscriberCount: '1.290',
@@ -14,29 +14,53 @@
   function log(...a){ if(CFG.debug) console.log('[MancaCustom]', ...a); }
   function $(sel, ctx=document){ return ctx.querySelector(sel); }
   function $$(sel, ctx=document){ return Array.from(ctx.querySelectorAll(sel)); }
-  async function fetchYouTubeStats(){
-    if(!CFG.youtubeApiKey){
-      log('No hay YouTube API key, usando valores estáticos');
-      return {subs: CFG.subscriberCount, videos: CFG.videoCount};
-    }
-    try {
-      const handle = CFG.youtubeChannel.replace('@','');
-      const res = await fetch(`https://www.googleapis.com/youtube/v3/channels?part=statistics&forHandle=${handle}&key=${CFG.youtubeApiKey}`);
-      const data = await res.json();
-      if(data.items && data.items[0]){
-        const s = data.items[0].statistics;
-        return {subs: fmtNumber(s.subscriberCount || '0'), videos: fmtNumber(s.videoCount || '0')};
-      }
-    } catch(e){ log('Error fetching YouTube stats:', e); }
-    return {subs: CFG.subscriberCount, videos: CFG.videoCount};
+  function fmtNumber(n){
+    n = String(n).replace(/\D/g,'');
+    if(!n) return '0';
+    const num = parseInt(n,10);
+    if(num >= 1000) return (num/1000).toFixed(1).replace('.',',') + 'K';
+    return num.toString();
   }
 
-  async function fetchLatestVideos(maxResults=6){
-    if(!CFG.youtubeApiKey){ return []; }
+  async function fetchLatestVideosRSS(maxResults=6){
     try {
-      const chRes = await fetch(`https://www.googleapis.com/youtube/v3/channels?part=contentDetails&forHandle=${CFG.youtubeChannel.replace('@','')}&key=${CFG.youtubeApiKey}`);
-      const chData = await chRes.json();
-      if(!chData.items || !chData.items[0]) return [];
+      const url = `https://www.youtube.com/feeds/videos.xml?playlist_id=${CFG.youtubePlaylist}`;
+      const res = await fetch(url);
+      if(!res.ok) throw new Error('RSS no disponible');
+      const text = await res.text();
+      const parser = new DOMParser();
+      const xml = parser.parseFromString(text, 'application/xml');
+      const entries = xml.getElementsByTagName('entry');
+      const videos = [];
+      for(let i=0; i<entries.length && i<maxResults; i++){
+        const e = entries[i];
+        const titleEl = e.getElementsByTagName('title')[0];
+        const linkEl = e.getElementsByTagName('link')[0];
+        const thumbEls = e.getElementsByTagNameNS('http://search.yahoo.com/mrss/', 'thumbnail');
+        const ytIdEls = e.getElementsByTagNameNS('http://www.youtube.com/xml/schemas/2015', 'videoId');
+        let thumbnail = '';
+        if(thumbEls && thumbEls.length>0) thumbnail = thumbEls[0].getAttribute('url') || '';
+        let videoId = '';
+        if(ytIdEls && ytIdEls.length>0) videoId = ytIdEls[0].textContent || '';
+        if(!videoId && linkEl){
+          const m = (linkEl.getAttribute('href')||'').match(/[?&]v=([^&]+)/);
+          if(m) videoId = m[1];
+        }
+        if(!videoId) continue;
+        videos.push({
+          id: videoId,
+          title: titleEl ? titleEl.textContent : 'Video de El Canal',
+          thumbnail: thumbnail || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+          url: `https://www.youtube.com/watch?v=${videoId}`
+        });
+      }
+      return videos;
+    } catch(e){
+      log('Error fetching YouTube RSS:', e);
+      return [];
+    }
+  }
+
   const lightboxHTML = `
     <div id="manca-lightbox" style="
       position:fixed; inset:0; z-index:999999;
@@ -87,14 +111,24 @@
   }
 
   const lightbox = initLightbox();
+
+  function makeImageClickable(img, caption){
+    if(img.dataset.mancaLightbox) return;
+    img.dataset.mancaLightbox = '1';
+    img.style.cursor = 'zoom-in';
+    img.addEventListener('click', (e)=>{
+      e.preventDefault();
+      e.stopPropagation();
+      lightbox.open(img.src, caption || img.alt || '');
+    });
+  }
+    return num.toString();
+  }
   function initCarousel(container){
     if(container.dataset.mancaCarousel) return;
     container.dataset.mancaCarousel = '1';
 
-    const slider = container.querySelector(':scope > div') || container;
-    if(!slider) return;
-
-    $$('img', slider).forEach(img => {
+    $$('img', container).forEach(img => {
       makeImageClickable(img, img.alt || '');
     });
 
@@ -142,7 +176,12 @@
     const candidates = $$('[style*="overflow-x-auto"], [class*="overflow-x-auto"]');
     return candidates.filter(el => {
       return el.querySelector('img') !== null ||
+             (el.className && /galeria|marca|sponsor|carrusel|slider|carousel/i.test(el.className));
+    });
   async function updateCanalSection(){
+    // Contadores de suscriptores/videos: valores editables desde siteContent.json (sin API key de YouTube)
+    const stats = {subs: CFG.subscriberCount, videos: CFG.videoCount};
+
     const texto = $$('*').find(el => {
       const t = el.textContent || '';
       return t.includes('suscriptores') || t.includes('@elmancasg') || t.includes('producciones');
@@ -153,10 +192,8 @@
       return false;
     }
 
-    const stats = await fetchYouTubeStats();
     const parent = texto.closest('div, section, article') || texto.parentElement;
     if(parent){
-      const newText = `@elmancasg • ${stats.subs} suscriptores • ${stats.videos} producciones`;
       const walker = document.createTreeWalker(parent, NodeFilter.SHOW_TEXT, null, false);
       let node;
       while(node = walker.nextNode()){
@@ -166,14 +203,13 @@
             .replace(/\d[\d.,]*\s*producciones/i, `${stats.videos} producciones`);
         }
       }
-      log('Contadores actualizados:', newText);
+      log('Contadores actualizados:', stats);
     }
 
-    if(CFG.youtubeApiKey){
-      const videos = await fetchLatestVideos(6);
-      if(videos.length > 0){
-        renderLatestVideos(videos);
-      }
+    // Últimos 6 videos vía RSS de YouTube (gratis)
+    const videos = await fetchLatestVideosRSS(6);
+    if(videos.length > 0){
+      renderLatestVideos(videos);
     }
 
     return true;
@@ -182,11 +218,61 @@
   function renderLatestVideos(videos){
     const ytContainer = $$('section, div').find(el => {
       const html = el.innerHTML || '';
-      return html.includes('youtube.com/embed') || html.includes('youtube.com/watch');
-    });
+      return html.includes('youtube.com/embed') || html.includes('youtube.com/watch') || el.id?.includes('canal') || el.className?.includes('canal');
+    }) || $$('section').find(el => el.innerHTML.includes('Últimos videos')) || null;
 
     if(!ytContainer){
-      log('No se encontró contenedor de videos para inyectar últimos videos');
+      // Si no hay contenedor existente, buscar la sección por el heading del canal
+      const canalSection = $$('section, div').find(el => {
+        const t = el.textContent || '';
+        return t.includes('El Canal') && t.includes('@elmancasg');
+      });
+      if(!canalSection){
+        log('No se encontró contenedor para inyectar últimos videos');
+        return;
+      }
+      // Insertar después de la sección del canal
+      canalSection.insertAdjacentHTML('afterend', buildVideosHTML(videos));
+      log('Últimos videos inyectados (después de sección canal):', videos.length);
+      return;
+    }
+
+    ytContainer.insertAdjacentHTML('beforeend', buildVideosHTML(videos));
+    log('Últimos videos inyectados:', videos.length);
+  }
+
+  function buildVideosHTML(videos){
+    return `
+      <div style="margin-top:2rem;">
+        <h3 style="color:#fff; font-size:1.25rem; margin-bottom:1rem;">Últimos videos de El Canal</h3>
+        <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap:1rem;">
+          ${videos.map(v => `
+            <div style="background:#0E1E44; border:1px solid #2A52BE; border-radius:12px; overflow-hidden; cursor:pointer;" onclick="window.open('${v.url}', '_blank')">
+              <img src="${v.thumbnail}" alt="${v.title}" style="width:100%; height:180px; object-fit:cover; display:block;">
+              <div style="padding:1rem;">
+                <div style="color:#fff; font-weight:bold; font-size:0.95rem; margin-bottom:0.5rem;">${v.title}</div>
+                <a href="${v.url}" target="_blank" style="color:#3870E0; text-decoration:none; font-size:0.85rem;">Ver en YouTube →</a>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  async function loadConfig(){
+    try {
+      const res = await fetch('/api/content.php');
+      if(res.ok){
+        const data = await res.json();
+        const st = data.siteTexts || {};
+        if(st.subscriberCount) CFG.subscriberCount = st.subscriberCount;
+        if(st.videoCount) CFG.videoCount = st.videoCount;
+        if(st.youtubeChannel) CFG.youtubeChannel = st.youtubeChannel;
+        if(st.youtubePlaylist) CFG.youtubePlaylist = st.youtubePlaylist;
+      }
+    } catch(e){ log('No se pudo cargar config:', e); }
+  }
   let initialized = false;
   async function init(){
     if(initialized) return;
@@ -243,72 +329,3 @@
   }
 
 })();
-      return;
-    }
-
-    const videosHTML = `
-      <div style="margin-top:2rem;">
-        <h3 style="color:#fff; font-size:1.25rem; margin-bottom:1rem;">Últimos videos de El Canal</h3>
-        <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap:1rem;">
-          ${videos.map(v => `
-            <div style="background:#0E1E44; border:1px solid #2A52BE; border-radius:12px; overflow-hidden; cursor:pointer;" onclick="window.open('${v.url}', '_blank')">
-              <img src="${v.thumbnail}" alt="${v.title}" style="width:100%; height:180px; object-fit:cover; display:block;">
-              <div style="padding:1rem;">
-                <div style="color:#fff; font-weight:bold; font-size:0.95rem; margin-bottom:0.5rem;">${v.title}</div>
-                <a href="${v.url}" target="_blank" style="color:#3870E0; text-decoration:none; font-size:0.85rem;">Ver en YouTube →</a>
-              </div>
-            </div>
-          `).join('')}
-        </div>
-      </div>
-    `;
-    ytContainer.insertAdjacentHTML('beforeend', videosHTML);
-    log('Últimos videos inyectados:', videos.length);
-  }
-
-  async function loadConfig(){
-    try {
-      const res = await fetch('/api/content.php');
-      if(res.ok){
-        const data = await res.json();
-        const st = data.siteTexts || {};
-        if(st.subscriberCount) CFG.subscriberCount = st.subscriberCount;
-        if(st.videoCount) CFG.videoCount = st.videoCount;
-        if(st.youtubeChannel) CFG.youtubeChannel = st.youtubeChannel;
-        if(st.youtubePlaylist) CFG.youtubePlaylist = st.youtubePlaylist;
-        if(st.youtubeApiKey) CFG.youtubeApiKey = st.youtubeApiKey;
-      }
-    } catch(e){ log('No se pudo cargar config:', e); }
-  }
-             el.className && /galeria|marca|sponsor|carrusel|slider|carousel/i.test(el.className);
-    });
-  }
-
-  function makeImageClickable(img, caption){
-    if(img.dataset.mancaLightbox) return;
-    img.dataset.mancaLightbox = '1';
-    img.style.cursor = 'zoom-in';
-    img.addEventListener('click', (e)=>{
-      e.preventDefault();
-      e.stopPropagation();
-      lightbox.open(img.src, caption || img.alt || '');
-    });
-  }
-      const uploadsId = chData.items[0].contentDetails.relatedPlaylists.uploads;
-      const plRes = await fetch(`https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=${uploadsId}&maxResults=${maxResults}&key=${CFG.youtubeApiKey}`);
-      const plData = await plRes.json();
-      return (plData.items || []).map(item => ({
-        id: item.snippet.resourceId.videoId,
-        title: item.snippet.title,
-        thumbnail: item.snippet.thumbnails.medium?.url || item.snippet.thumbnails.default?.url,
-        url: `https://www.youtube.com/watch?v=${item.snippet.resourceId.videoId}`
-      }));
-    } catch(e){ log('Error fetching latest videos:', e); return []; }
-  }
-  function fmtNumber(n){
-    n = String(n).replace(/\D/g,'');
-    if(!n) return '0';
-    const num = parseInt(n,10);
-    if(num >= 1000) return (num/1000).toFixed(1).replace('.',',') + 'K';
-    return num.toString();
-  }
