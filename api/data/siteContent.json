@@ -32,7 +32,8 @@
     "videoCount": "116",
     "youtubeChannel": "@elmancasg",
     "youtubePlaylist": "UU3woFJgJr1F8-55tU9Bxz3Q",
-    "youtubeApiKey": ""
+    "youtubeApiKey": "",
+    "canalLabel": "Canal Oficial"
   },
   "customIconUrl": "./assets/img/logo-manca.svg",
   "customFooterLogoUrl": "https://elmanca.com.ar/uploads/manca_1791556611_125.png",
