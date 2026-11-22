@@ -1,10 +1,7 @@
-// ============================================
-// MANCA CUSTOM — YouTube RSS (gratis, sin API key) + Canal configurable
-// ============================================
+// MANCA CUSTOM — Canal YouTube: RSS + suscriptores automáticos (sin API key)
 (function(){
   'use strict';
   const CFG = {
-    canalLabel: 'Canal Oficial',
     subscriberCount: '1.290',
     videoCount: '116',
     youtubeChannel: '@elmancasg',
@@ -14,9 +11,14 @@
   function log(...a){ if(CFG.debug) console.log('[MancaCustom]', ...a); }
   function $(s, c=document){ return c.querySelector(s); }
   function $$(s, c=document){ return Array.from(c.querySelectorAll(s)); }
-  function fmtNum(n){
-    n=String(n).replace(/\D/g,''); if(!n) return '0'; const num=parseInt(n,10);
-    return num>=1000?(num/1000).toFixed(1).replace('.',',')+'K':num.toString();
+  async function fetchSubscriberCount(){
+    try {
+      const res = await fetch(`https://www.youtube.com/${CFG.youtubeChannel}`);
+      const html = await res.text();
+      const m = html.match(/([\d.,]+)\s*suscriptores/i) || html.match(/([\d.,]+)\s*subscribers/i);
+      if(m && m[1]) return m[1].replace(/\./g,'');
+    }catch(e){ log('Error suscriptores:', e); }
+    return CFG.subscriberCount;
   }
   async function fetchLatestVideosRSS(maxResults=6){
     try {
@@ -35,14 +37,6 @@
         if(thumbEls.length>0) thumbnail = thumbEls[0].getAttribute('url')||'';
         if(ytIdEls.length>0) videoId = ytIdEls[0].textContent||'';
         if(!videoId && linkEl){ const m=(linkEl.getAttribute('href')||'').match(/[?&]v=([^&]+)/); if(m) videoId=m[1]; }
-        if(!videoId) continue;
-        videos.push({id:videoId, title: titleEl?titleEl.textContent:'Video de El Canal',
-          thumbnail: thumbnail||`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
-          url: `https://www.youtube.com/watch?v=${videoId}`});
-      }
-      return videos;
-    }catch(e){ log('Error RSS:', e); return []; }
-  }
   function buildVideoCard(v, first=false){
     const imgCls = first?'w-full h-48 object-cover':'w-full h-40 object-cover';
     return `<div class="rounded-2xl overflow-hidden bg-[#070E20] border border-[#2A52BE]/30 hover:border-[#3870E0] transition-all flex flex-col shadow-md cursor-pointer" onclick="window.open('${v.url}','_blank')">
@@ -57,6 +51,8 @@
     </div>`;
   }
   async function updateCanalSection(){
+    const subs = await fetchSubscriberCount();
+    CFG.subscriberCount = subs;
     const texto = $$('*').find(el => {
       const t = el.textContent||'';
       return t.includes('suscriptores')||t.includes('@elmancasg')||t.includes('producciones');
@@ -96,7 +92,6 @@
       if(res.ok){
         const data = await res.json();
         const st = data.siteTexts||{};
-        if(st.canalLabel) CFG.canalLabel = st.canalLabel;
         if(st.subscriberCount) CFG.subscriberCount = st.subscriberCount;
         if(st.videoCount) CFG.videoCount = st.videoCount;
         if(st.youtubeChannel) CFG.youtubeChannel = st.youtubeChannel;
@@ -121,3 +116,11 @@
   if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded', init); }
   else { init(); }
 })();
+        if(!videoId) continue;
+        videos.push({id:videoId, title: titleEl?titleEl.textContent:'Video de El Canal',
+          thumbnail: thumbnail||`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+          url: `https://www.youtube.com/watch?v=${videoId}`});
+      }
+      return videos;
+    }catch(e){ log('Error RSS:', e); return []; }
+  }
